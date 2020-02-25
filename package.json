@@ -1,0 +1,26 @@
+{
+  "name": "osjs-build-parallel-cli",
+  "version": "0.5.0",
+  "description": "OS.js Webpack Parallel build CLI module",
+  "main": "cli.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Anders Evenrud <andersevenrud@gmail.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/andersevenrud/osjs-build-parallel-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/andersevenrud/osjs-build-parallel-cli/issues"
+  },
+  "homepage": "https://github.com/andersevenrud/osjs-build-parallel-cli#readme",
+  "keywords": [
+    "osjs"
+  ],
+  "dependencies": {
+    "node-ipc": "^9.1.1",
+    "webpack": "^4.41.6"
+  }
+}
