@@ -28,74 +28,11 @@
  * @licence Simplified BSD License
  */
 
-const ipc = require('node-ipc');
-const webpack = require('webpack');
-const path = require('path');
-const {NS, withJSON} = require('./utils.js');
+const NS = 'webpackParallelBuild';
 
-ipc.config.silent = true;
+const withJSON = cb => arg => cb(JSON.parse(arg));
 
-ipc.connectTo(NS, () => {
-  ipc.of[NS].on('kill', code => {
-    process.exit(code);
-  });
-
-  const emit = (name, json) => ipc.of[NS]
-    .emit(name, JSON.stringify(json));
-
-  emit('webpackInit', {
-    filename: process.cwd()
-  });
-
-  ipc.of[NS].on('webpack', withJSON(({
-    filename,
-    watch,
-    watchOptions
-  }) => {
-    try {
-      const config = require(path.resolve(filename, 'webpack.config.js'));
-      const compiler = webpack(config);
-
-      if (filename !== process.cwd()) {
-        return;
-      }
-
-      console.log('<<<', 'Compiling', process.cwd());
-
-      const cb = (error, stats) => {
-        if (error) {
-          emit('webpackError', {
-            filename: process.cwd(),
-            error
-          });
-        } else {
-          emit('webpackResult', {
-            filename: process.cwd(),
-            stats: stats.toString()
-          });
-        }
-
-        if (!watch) {
-          process.exit(error ? 1 : 0);
-        }
-      };
-
-
-      if (watch) {
-        compiler.watch(Object.assign({
-          aggregateTimeout: 300,
-          poll: undefined
-        }, watchOptions || {}), cb);
-      } else {
-        compiler.run(cb);
-      }
-    } catch (e) {
-      emit('webpackError', {
-        filename: process.cwd(),
-        error: e.message
-      });
-
-      process.exit(1);
-    }
-  }));
-});
+module.exports = {
+  NS,
+  withJSON
+};

@@ -10,13 +10,11 @@
 [![Donate](https://img.shields.io/badge/paypal-donate-yellow.svg)](https://paypal.me/andersevenrud)
 [![Community](https://img.shields.io/badge/join-community-green.svg)](https://community.os-js.org/)
 
-# OS.js Webpack Parallel build CLI module
+# OS.js Webpack Parallel build CLI module (WIP)
 
-This CLI extensions supports building modules and packages in parallel.
+This CLI extensions supports building distro, packages and custom targets in parallel.
 
-Builds everything in your OS.js distro by launching webpack in parallel with concurrency.
-
-> **Please note that this is a work in progress**
+> **Please note that this is a work in progress**. Also note that this is **not** the same as [parallel-webpack](https://github.com/trivago/parallel-webpack) as this spawns independent processes with its own cwd.
 
 ## Installation
 
@@ -46,6 +44,8 @@ module.exports = {
 ```
 
 ## Usage
+
+> *Please note that using watch on a larger amount of targets leads to insane memory usage. Use sparingly*
 
 ```
 # For help

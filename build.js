@@ -1,4 +1,4 @@
-/*!
+/*
  * OS.js - JavaScript Cloud/Web Desktop Platform
  *
  * Copyright (c) 2011-2018, Anders Evenrud <andersevenrud@gmail.com>
@@ -31,9 +31,9 @@
 const ipc = require('node-ipc');
 const path = require('path');
 const {spawn} = require('child_process');
+const {NS, withJSON} = require('./utils.js');
 
-const NS = 'webpackParallelBuild';
-const withJSON = cb => arg => cb(JSON.parse(arg));
+const on = (name, cb) => ipc.server.on(name, withJSON(cb));
 
 const initialProcs = configs => Object.fromEntries(
   configs.map(filename => ([
@@ -57,6 +57,55 @@ const spawnProcess = (cwd) => {
   return proc;
 };
 
+const spawnCount = (procs, concurrency) => {
+  const active = Object.values(procs)
+    .filter(({active}) => active)
+    .length;
+
+  return concurrency - active;
+};
+
+const nextSpawnSlice = (procs, count) => Object
+  .keys(procs)
+  .filter(key => !procs[key].finished)
+  .slice(0, count);
+
+const killer = procs => {
+  Object.values(procs).forEach(({proc}) => {
+    if (proc) {
+      try {
+        proc.kill();
+      } catch (e) {
+        console.warn(e);
+      }
+    }
+  });
+};
+
+const everyWith = (procs, key) => Object
+  .values(procs)
+  .every(item => item[key]);
+
+const onNextRun = (object, watch) => {
+  object.active = true;
+
+  ipc.server.broadcast('webpack', JSON.stringify({
+    watch,
+    filename: object.filename
+  }));
+};
+
+const onFinished = (object, filename, error, stats) => {
+  object.finished = true;
+  object.active = false;
+
+  if (error) {
+    console.error(`An error occured in ${filename}`, error);
+  } else {
+    console.log(stats);
+  }
+};
+
 const main = ({
   configs,
   concurrency,
@@ -65,54 +114,17 @@ const main = ({
   let isFinished = false;
 
   const procs = initialProcs(configs);
-  const killAll = () => Object.values(procs)
-    .forEach(({proc}) => {
-      if (proc) {
-        try {
-          proc.kill();
-        } catch (e) {
-          console.warn(e);
-        }
-      }
-    });
-
+  const killAll = () => killer(procs);
 
   const nextRun = () => {
-    const active = Object.values(procs)
-      .filter(({active}) => active)
-      .length;
-
-    const count = concurrency - active;
-
-    const next = Object.keys(procs)
-      .filter(key => !procs[key].finished)
-      .slice(0, count);
-
-    next.forEach((key) => {
-      const object = procs[key];
-
-      object.active = true;
-
-      ipc.server.broadcast('webpack', JSON.stringify({
-        watch,
-        filename: object.filename
-      }));
-    });
-  };
-
-  const checkInited = () => {
-    const ready = Object.values(procs)
-      .every(({inited}) => inited);
-
-    if (ready) {
-      nextRun();
-    }
+    const count = spawnCount(procs, concurrency);
+    const next = nextSpawnSlice(procs, count);
+    next.forEach((key) => onNextRun(procs[key], watch));
   };
 
   const checkFinished = () => {
     if (!watch) {
-      isFinished = Object.values(procs)
-        .every(({finished}) => finished);
+      isFinished = everyWith(procs, 'finished');
 
       if (isFinished) {
         killAll();
@@ -124,16 +136,16 @@ const main = ({
     return false;
   };
 
-  ipc.server.on('webpackInit', withJSON(({filename}) => {
+  const onWebpackInit = ({filename}) => {
     procs[filename].inited = true;
-    checkInited();
-  }));
 
-  ipc.server.on('webpackError', withJSON(({error, filename}) => {
-    console.error(`An error occured in ${filename}`, error);
+    if (everyWith(procs, 'inited')) {
+      nextRun();
+    }
+  };
 
-    procs[filename].finished = true;
-    procs[filename].active = false;
+  const onWebpackError = ({error, filename}) => {
+    onFinished(procs[filename], filename, error);
 
     if (!watch && !isFinished) {
       killAll();
@@ -141,13 +153,10 @@ const main = ({
     }
 
     nextRun();
-  }));
+  };
 
-  ipc.server.on('webpackResult', withJSON(({stats, filename}) => {
-    console.log(stats);
-
-    procs[filename].finished = true;
-    procs[filename].active = false;
+  const onWebpackResult = ({stats, filename}) => {
+    onFinished(procs[filename], filename, undefined, stats);
 
     if (checkFinished()) {
       killAll();
@@ -155,7 +164,11 @@ const main = ({
     }
 
     nextRun();
-  }));
+  };
+
+  on('webpackInit', onWebpackInit);
+  on('webpackError', onWebpackError);
+  on('webpackResult', onWebpackResult);
 
   Object.keys(procs).forEach((key) => {
     procs[key].proc = spawnProcess(procs[key].filename);
@@ -163,7 +176,7 @@ const main = ({
 };
 
 module.exports = (config) => {
-  const wrapper = (cb) => (...args) => {
+  const wrapper = cb => (...args) => {
     try {
       ipc.server.stop();
     } catch (e) {
